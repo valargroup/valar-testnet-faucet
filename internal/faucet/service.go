@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/valargroup/valar-testnet-faucet/internal/broadcast"
@@ -88,8 +89,9 @@ type Service struct {
 
 	wake chan struct{}
 
-	mu     sync.RWMutex
-	status Status
+	mu               sync.RWMutex
+	status           Status
+	donationVerified atomic.Bool
 }
 
 // New returns a Service. Call Run to start its background loops.

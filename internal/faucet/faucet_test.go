@@ -146,6 +146,19 @@ func TestClaimValidation(t *testing.T) {
 			},
 		},
 		{
+			name: "unshielded coinbase alone is not spendable",
+			setup: func(h *harness) {
+				h.wallet.Balance = zecd.Balances{Trusted: 4_000 * 100_000_000, Coinbase: 4_000 * 100_000_000}
+				h.svc.RefreshStatus(ctx)
+			},
+			address: "utest1abc",
+			check: func(t *testing.T, err error) {
+				var u *faucet.UnavailableError
+				require.ErrorAs(t, err, &u)
+				require.Equal(t, "faucet is empty", u.Reason)
+			},
+		},
+		{
 			name: "pending balance still counts as funded",
 			setup: func(h *harness) {
 				h.wallet.Balance = zecd.Balances{UntrustedPending: 50_000_000}
@@ -336,6 +349,23 @@ func TestRunPaysQueueAndRecoversInterrupted(t *testing.T) {
 	require.Equal(t, store.StatusReview, s.Status)
 	require.Equal(t, 1, h.wallet.SendCount())
 	require.Equal(t, "utest1fresh", h.wallet.Sends[0].Address)
+}
+
+func TestDonationAddressFollowsWalletSwap(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	// A previous wallet's address is still stored.
+	require.NoError(t, h.store.SetMeta(ctx, "donation_address", "utest1previouswallet"))
+	h.wallet.Own = map[string]bool{"utest1faucetdonation": true}
+
+	svc := faucet.New(faucet.DefaultConfig(limits), h.store, h.wallet, h.bcast, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	svc.RefreshStatus(ctx)
+	require.Equal(t, "utest1faucetdonation", svc.Status().DonationAddress)
+
+	// A stored address the wallet owns is kept as is.
+	svc = faucet.New(faucet.DefaultConfig(limits), h.store, h.wallet, h.bcast, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	svc.RefreshStatus(ctx)
+	require.Equal(t, "utest1faucetdonation", svc.Status().DonationAddress)
 }
 
 func TestStatusSnapshot(t *testing.T) {

@@ -128,32 +128,46 @@ The faucet runs on **zakura-testnet-1** (167.99.103.111, DO project `zakura-test
 
 If a fleet deploy ever installs a Caddyfile without that line, the faucet drops off the public hostname. `install.sh` warns when this happens, and the deploy's public health check fails.
 
-### Wallet setup (one time)
+### Wallet
 
-Run this on the host after the first deploy:
+The faucet wallet is the **testnet miner's seed** (BIP-39, BIP-44 account 0).
+- Its source of truth is Infisical `VALAR_FAUCET_ZECD_MNEMONIC` (project "Zakura snapshots", env `prod`, path `/testnet-faucet`).
+- `zakura-testnet-mining` mines to its transparent address `tmK9XQyaisELfPsiGudwNXTRHo7G3z2uUwa` (external index 0).
+- The same seed is also loaded in the `public` zecd wallet on the mining host. Spending from both at once can conflict: one transaction is rejected, and its notes stay locked until it expires.
 
-```sh
-umask 077
-runuser -u valar-zecd -- /opt/valar-faucet/zecd/current/zecd \
-  --conf /etc/valar-faucet/zecd.toml init --wallet default > /root/valar-faucet-mnemonic.txt
-systemctl start valar-faucet-zecd
-```
-
-Store the mnemonic in Infisical from your own terminal, then shred the file:
+To restore it on a host, stream the phrase over stdin so it never touches a command line. The first miner payout was at height 4,271,369, so start the scan just before it:
 
 ```sh
-infisical secrets set VALAR_FAUCET_ZECD_MNEMONIC="$(ssh root@167.99.103.111 cat /root/valar-faucet-mnemonic.txt)" \
-  --projectId=c57a6889-6a7c-4d05-a54a-e4a4c0b14ee7 --env=prod --path=/testnet-faucet
-ssh root@167.99.103.111 shred -u /root/valar-faucet-mnemonic.txt
+systemctl stop valar-faucet-zecd
+infisical secrets get VALAR_FAUCET_ZECD_MNEMONIC --projectId=c57a6889-6a7c-4d05-a54a-e4a4c0b14ee7 \
+    --env=prod --path=/testnet-faucet --plain --silent |
+  ssh root@167.99.103.111 'runuser -u valar-zecd -- /opt/valar-faucet/zecd/current/zecd \
+    --conf /etc/valar-faucet/zecd.toml init --restore --wallet default --birthday 4271000 >/dev/null'
+ssh root@167.99.103.111 'systemctl start valar-faucet-zecd && systemctl restart valar-faucet'
 ```
 
-To restore on a new host, run `zecd … init --restore --birthday <height>` with `ZECD_MNEMONIC` set from Infisical.
+### Shielding mined coins
+
+Mined coins sit at the transparent address, and consensus lets them move only into a shielded pool. Until then they can't fund payouts.
+- `getbalances` counts them under `mine.coinbase`.
+- The page shows them as "unshielded", and they aren't counted as spendable.
+
+To shield them into the wallet's own shielded address, 250 outputs per transaction, rerun this until `mine.coinbase` reaches 0:
+
+```sh
+ssh root@167.99.103.111
+rpc() { curl -s -u "faucet:$(cat /etc/valar-faucet/zecd-rpc.password)" -H 'content-type: application/json' \
+  -d "{\"jsonrpc\":\"1.0\",\"id\":1,\"method\":\"$1\",\"params\":$2}" http://127.0.0.1:18890/; }
+to=$(curl -s 127.0.0.1:8093/api/status | python3 -c 'import sys,json;print(json.load(sys.stdin)["donationAddress"])')
+rpc z_shieldcoinbase "[\"*\", \"$to\", null, 250]"   # -> {"opid": ...}
+rpc z_waitforoperation '["<opid>", 300]'
+```
+
+Shielded funds become spendable after `[spend] trusted_confirmations` (3) blocks.
 
 ### Funding
 
-Send TAZ to the donation address shown on the page or in `/api/status` (`donationAddress`). Any Orchard/Ironwood-capable testnet wallet works.
-
-The page reports "empty" when the spendable plus pending balance is below one payout plus a fee reserve.
+Send TAZ to the donation address shown on the page or in `/api/status` (`donationAddress`). Any Orchard/Ironwood-capable testnet wallet works. The page reports "empty" when the shielded spendable plus pending balance is below one payout plus a fee reserve.
 
 ### Operations
 

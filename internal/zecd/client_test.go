@@ -64,11 +64,13 @@ func TestSendToAddressInsufficientFunds(t *testing.T) {
 
 func TestBalances(t *testing.T) {
 	c := fakeZecd(t, map[string]string{
-		"getbalances": `{"result":{"mine":{"trusted":12.50000000,"untrusted_pending":0.12500000,"immature":0.00000000,"coinbase":0.00000000},"lastprocessedblock":{"hash":"00","height":5}}}`,
+		"getbalances": `{"result":{"mine":{"trusted":12.50000000,"untrusted_pending":0.12500000,"immature":0.00000000,"coinbase":10.00000000},"lastprocessedblock":{"hash":"00","height":5}}}`,
 	}, nil)
 	b, err := c.Balances(context.Background())
 	require.NoError(t, err)
-	require.Equal(t, zecd.Balances{Trusted: 1_250_000_000, UntrustedPending: 12_500_000}, b)
+	require.Equal(t, zecd.Balances{Trusted: 1_250_000_000, UntrustedPending: 12_500_000, Coinbase: 1_000_000_000}, b)
+	require.Equal(t, int64(250_000_000), b.Spendable())
+	require.Equal(t, int64(0), zecd.Balances{Trusted: 1, Coinbase: 5}.Spendable())
 }
 
 func TestReads(t *testing.T) {

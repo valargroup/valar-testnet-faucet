@@ -126,6 +126,7 @@ type statusResponse struct {
 	AddressCooldownSeconds int64          `json:"addressCooldownSeconds"`
 	Balance                string         `json:"balance"`
 	PendingBalance         string         `json:"pendingBalance"`
+	UnshieldedBalance      string         `json:"unshieldedBalance"`
 	WalletSynced           bool           `json:"walletSynced"`
 	ChainHeight            int64          `json:"chainHeight"`
 	PaidCount              int            `json:"paidCount"`
@@ -152,8 +153,9 @@ func (s *Server) handleStatus(w http.ResponseWriter, _ *http.Request) {
 		IPLimit:                zat.Display(lim.IPWindowLimitZat),
 		WindowSeconds:          int64(lim.Window / time.Second),
 		AddressCooldownSeconds: int64(lim.AddressCooldown / time.Second),
-		Balance:                zat.Display(st.Balance.Trusted),
+		Balance:                zat.Display(st.Balance.Spendable()),
 		PendingBalance:         zat.Display(st.Balance.UntrustedPending),
+		UnshieldedBalance:      zat.Display(st.Balance.Coinbase),
 		WalletSynced:           st.WalletSynced,
 		ChainHeight:            st.ChainHeight,
 		PaidCount:              st.Stats.SentCount,

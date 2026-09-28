@@ -84,7 +84,7 @@ func (s *Service) RefreshStatus(ctx context.Context) {
 		st.Reason = "wallet unreachable"
 	case !st.WalletSynced:
 		st.Reason = "wallet syncing"
-	case bal.Trusted+bal.UntrustedPending < need:
+	case bal.Spendable()+bal.UntrustedPending < need:
 		st.Reason = "faucet is empty"
 	default:
 		st.Ready = true
@@ -96,15 +96,28 @@ func (s *Service) RefreshStatus(ctx context.Context) {
 }
 
 // donationAddress returns the faucet's receive address, asking zecd for one the first
-// time and persisting it so every page shows the same address.
+// time and persisting it so every page shows the same address. Once per process it
+// confirms the stored address still belongs to the wallet, so swapping the wallet's seed
+// never leaves the page advertising someone else's address.
 func (s *Service) donationAddress(ctx context.Context, walletUp bool) string {
 	addr, ok, err := s.store.Meta(ctx, donationAddressKey)
 	if err != nil {
 		s.log.Error("load donation address", "err", err)
 		return ""
 	}
-	if ok || !walletUp {
+	if !walletUp || (ok && s.donationVerified.Load()) {
 		return addr
+	}
+	if ok {
+		info, err := s.wallet.ValidateAddress(ctx, addr)
+		if err != nil {
+			return addr
+		}
+		if info.IsMine {
+			s.donationVerified.Store(true)
+			return addr
+		}
+		s.log.Warn("stored donation address is not the wallet's; replacing it")
 	}
 	addr, err = s.wallet.NewAddress(ctx)
 	if err != nil {
@@ -113,6 +126,8 @@ func (s *Service) donationAddress(ctx context.Context, walletUp bool) string {
 	}
 	if err := s.store.SetMeta(ctx, donationAddressKey, addr); err != nil {
 		s.log.Error("save donation address", "err", err)
+		return addr
 	}
+	s.donationVerified.Store(true)
 	return addr
 }

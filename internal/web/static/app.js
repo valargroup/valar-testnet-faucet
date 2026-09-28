@@ -39,6 +39,20 @@
     return `${Math.floor(s / 86400)}d ago`;
   }
 
+  // "1850.375" -> "1,850.375": group the integer part without touching the decimals.
+  function grouped(amount) {
+    const [whole, frac] = String(amount).split(".");
+    const g = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    return frac ? `${g}.${frac}` : g;
+  }
+
+  // Grouped and truncated (never rounded up) to dp decimals, for the compact stat tiles.
+  function brief(amount, dp = 2) {
+    const [whole, frac = ""] = String(amount).split(".");
+    const f = frac.slice(0, dp).replace(/0+$/, "");
+    return grouped(f ? `${whole}.${f}` : whole);
+  }
+
   function explorerURL(txid) {
     if (!status || !status.explorerTxUrl || !/^[0-9a-f]{64}$/i.test(txid)) return null;
     return status.explorerTxUrl.replace("{txid}", txid);
@@ -62,11 +76,15 @@
     else setState("Unavailable", "bad");
     submit.disabled = !status.ready || submitting;
 
-    $("stat-balance").textContent = status.balance;
-    $("stat-pending").textContent = status.pendingBalance !== "0" ? `+${status.pendingBalance} confirming` : "spendable";
+    $("stat-balance").textContent = brief(status.balance);
+    $("stat-balance").title = `${status.balance} TAZ`;
+    const notes = [];
+    if (status.pendingBalance !== "0") notes.push(`+${brief(status.pendingBalance, 3)} confirming`);
+    if (status.unshieldedBalance && status.unshieldedBalance !== "0") notes.push(`+${brief(status.unshieldedBalance)} unshielded`);
+    $("stat-pending").textContent = notes.length ? notes.join(" · ") : "shielded, spendable";
     $("stat-height").textContent = status.chainHeight ? status.chainHeight.toLocaleString("en-US") : "–";
     $("stat-paid").textContent = String(status.paidCount);
-    $("stat-paid-amount").textContent = `${status.paidAmount} TAZ · ${status.capRemaining} left today`;
+    $("stat-paid-amount").textContent = `${brief(status.capRemaining, 3)} TAZ left today`;
     $("stat-nodes").textContent = String(status.broadcastNodes);
     if (status.statusPageUrl) $("status-link").href = status.statusPageUrl;
 

@@ -93,10 +93,16 @@ func (c *Client) RawTransaction(ctx context.Context, txid string) (string, error
 
 // Balances is the wallet balance split, in zatoshis.
 type Balances struct {
-	Trusted          int64 // spendable now
+	Trusted          int64 // confirmed; includes Coinbase
 	UntrustedPending int64 // received or change, waiting for confirmations
 	Immature         int64
+	// Coinbase is the part of Trusted that is mature transparent coinbase. Ordinary sends
+	// can never spend it; it moves only through z_shieldcoinbase.
+	Coinbase int64
 }
+
+// Spendable is what an ordinary send can use right now.
+func (b Balances) Spendable() int64 { return max(b.Trusted-b.Coinbase, 0) }
 
 // Balances returns the wallet's current balance split.
 func (c *Client) Balances(ctx context.Context) (Balances, error) {
@@ -107,6 +113,7 @@ func (c *Client) Balances(ctx context.Context) (Balances, error) {
 			Trusted          json.Number `json:"trusted"`
 			UntrustedPending json.Number `json:"untrusted_pending"`
 			Immature         json.Number `json:"immature"`
+			Coinbase         json.Number `json:"coinbase"`
 		} `json:"mine"`
 	}
 	if err := c.rpc.Call(ctx, "getbalances", nil, &out); err != nil {
@@ -121,6 +128,7 @@ func (c *Client) Balances(ctx context.Context) (Balances, error) {
 		{&b.Trusted, out.Mine.Trusted},
 		{&b.UntrustedPending, out.Mine.UntrustedPending},
 		{&b.Immature, out.Mine.Immature},
+		{&b.Coinbase, out.Mine.Coinbase},
 	} {
 		if f.src == "" {
 			continue

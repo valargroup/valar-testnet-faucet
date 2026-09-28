@@ -38,6 +38,12 @@ allowed_methods = [
   "listtransactions",
   "getrpcinfo",
   "uptime",
+  # Operator-driven shielding of the miner's transparent coinbase (see README).
+  "z_shieldcoinbase",
+  "z_getoperationstatus",
+  "z_getoperationresult",
+  "z_waitforoperation",
+  "z_listoperationids",
 ]
 
 [keys]
@@ -49,6 +55,12 @@ auto_unlock = true
 # Post-NU6.3, Ironwood notes arrive at the Orchard receiver.
 enabled = ["orchard"]
 default_receivers = ["orchard"]
+# The faucet wallet is the testnet miner's seed, whose block rewards land at its
+# transparent address (BIP-44 account 0, external index 0). Transparent discovery lets
+# the wallet see that coinbase so it can be shielded with z_shieldcoinbase. Payouts still
+# come only from shielded notes: the AllowRevealedRecipients policy below never spends
+# transparent inputs, and coinbase can only move through z_shieldcoinbase anyway.
+transparent = true
 
 [sync]
 interval_secs = 20
