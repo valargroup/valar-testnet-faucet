@@ -11,6 +11,7 @@
 #   4. the Caddy site snippet (validated before reload; restored on failure)
 #   5. zecd restart when its binary or config changed (only once a wallet exists)
 #   6. switch the faucet to this release, health-check, roll back on failure
+#      (the 5-minute Sentry health-check timer is enabled in step 3 when configured)
 #   7. prune old releases
 set -euo pipefail
 
@@ -108,7 +109,7 @@ fi
 rm -f "$ETC/zecd.toml.candidate"
 
 units_changed=0
-for unit in valar-faucet.service valar-faucet-zecd.service; do
+for unit in valar-faucet.service valar-faucet-zecd.service valar-faucet-healthcheck.service valar-faucet-healthcheck.timer; do
 	if install_if_changed "$REL/deploy/$unit" "$UNIT_DIR/$unit" 644 root:root; then
 		units_changed=1
 		if [[ $unit == valar-faucet-zecd.service ]]; then
@@ -120,6 +121,13 @@ if ((units_changed)); then
 	systemctl daemon-reload
 fi
 systemctl enable --quiet valar-faucet-zecd.service valar-faucet.service
+# Alerts need the Sentry DSN, placed on the host by hand from Infisical (README: Alerts).
+if [[ -s $ETC/sentry.env ]]; then
+	chmod 600 "$ETC/sentry.env"
+	systemctl enable --now --quiet valar-faucet-healthcheck.timer
+else
+	warn "no $ETC/sentry.env; faucet alerts are disabled (README: Alerts)."
+fi
 
 # ---------------------------------------------------------------- 4. Caddy
 if ! grep -Eq '^[[:space:]]*import[[:space:]]+/etc/caddy/conf\.d/\*\.caddy' "$CADDYFILE"; then

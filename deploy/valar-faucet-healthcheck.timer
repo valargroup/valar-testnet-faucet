@@ -1,0 +1,10 @@
+[Unit]
+Description=Check the Valar testnet faucet every 5 minutes
+
+[Timer]
+# Matches the Sentry monitor schedule (*/5 * * * *, 5 minute margin).
+OnCalendar=*:0/5
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

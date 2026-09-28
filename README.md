@@ -169,6 +169,29 @@ Shielded funds become spendable after `[spend] trusted_confirmations` (3) blocks
 
 Send TAZ to the donation address shown on the page or in `/api/status` (`donationAddress`). Any Orchard/Ironwood-capable testnet wallet works. The page reports "empty" when the shielded spendable plus pending balance is below one payout plus a fee reserve.
 
+### Alerts
+
+`valar-faucet-healthcheck.timer` runs `deploy/healthcheck.py` on the host every 5 minutes. It checks the public site (`/healthz`, then `/readyz`) and reports to the Sentry project **`zakura-snapshots`**. That project's existing `Notify zakura-snapshots-alert via Slack` rule posts to **#zakura-snapshots-alerts**.
+
+Sentry is told two things:
+- **A cron check-in** for monitor `valar-faucet-health`, ok or error. Each check-in also upserts the monitor settings: schedule `*/5 * * * *`, a 5-minute margin, an issue after 2 consecutive bad check-ins, and recovery after 1. When the host or the timer dies, check-ins stop arriving, and the monitor alerts on the missing check-in.
+- **One error event per outage** once a failure repeats, naming the reason:
+  - `site down (HTTP 502)`
+  - `not accepting claims: faucet is empty`
+  - `not accepting claims: wallet syncing`
+  - `not accepting claims: wallet unreachable`
+
+The DSN comes from Infisical ("Zakura snapshots" / `prod` / `SENTRY_DSN`). Place it on the host once; `install.sh` enables the timer only when this file exists:
+
+```sh
+infisical secrets get SENTRY_DSN --projectId=c57a6889-6a7c-4d05-a54a-e4a4c0b14ee7 --env=prod --plain --silent |
+  ssh root@167.99.103.111 'umask 077; { printf "SENTRY_DSN="; cat; } > /etc/valar-faucet/sentry.env'
+```
+
+To check the monitor: `journalctl -u valar-faucet-healthcheck -n 20`.
+
+To run a check now: `systemctl start valar-faucet-healthcheck`.
+
 ### Operations
 
 ```sh

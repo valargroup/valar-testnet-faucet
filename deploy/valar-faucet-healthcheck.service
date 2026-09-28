@@ -1,0 +1,32 @@
+[Unit]
+Description=Valar testnet faucet health check (Sentry cron monitor -> Slack)
+Documentation=https://github.com/valargroup/valar-testnet-faucet#alerts
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+DynamicUser=yes
+StateDirectory=valar-faucet-healthcheck
+# SENTRY_DSN of the "zakura-snapshots" Sentry project, whose Slack rule posts to
+# #zakura-snapshots-alerts. Root-only; systemd reads it before dropping privileges.
+EnvironmentFile=/etc/valar-faucet/sentry.env
+Environment=FAUCET_PUBLIC_URL=https://faucet.testnet.valargroup.dev
+ExecStart=/usr/bin/python3 /opt/valar-faucet/current/deploy/healthcheck.py
+# Exit 1 means "faucet unhealthy" (already reported), not a failed unit.
+SuccessExitStatus=1
+TimeoutStartSec=90
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=

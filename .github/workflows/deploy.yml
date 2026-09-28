@@ -43,6 +43,8 @@ jobs:
       - run: go vet ./...
       - run: go test -race ./...
       - run: shellcheck deploy/install.sh
+      - name: healthcheck self-test
+        run: python3 deploy/healthcheck.py --self-test
       - name: Release id
         id: release
         run: echo "id=$(date -u +%Y%m%d%H%M%S)-${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
