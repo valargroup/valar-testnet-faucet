@@ -4,7 +4,7 @@ name: Deploy
 #
 # GitHub Environment "testnet" (deployment branches: main only) provides:
 #   secrets.DEPLOY_SSH_KEY      ed25519 private key authorized for root on the host
-#                               (source of truth: Infisical valargroup/prod /testnet-faucet)
+#                               (source of truth: Infisical "Zakura snapshots" prod /testnet-faucet)
 #   vars.DEPLOY_HOST            host address
 #   vars.DEPLOY_KNOWN_HOSTS     the host's pinned SSH host key line(s)
 on:

@@ -118,7 +118,7 @@ The faucet runs on **zakura-testnet-1** (167.99.103.111, DO project `zakura-test
 
 | Kind | Name | Value |
 |---|---|---|
-| Secret | `DEPLOY_SSH_KEY` | ed25519 key authorized for root on the host. Source of truth: Infisical `valargroup` / `prod` / `/testnet-faucet` / `VALAR_FAUCET_DEPLOY_SSH_PRIVATE_KEY` |
+| Secret | `DEPLOY_SSH_KEY` | ed25519 key authorized for root on the host. Source of truth: Infisical project "Zakura snapshots" (`c57a6889-6a7c-4d05-a54a-e4a4c0b14ee7`), env `prod`, path `/testnet-faucet`, `VALAR_FAUCET_DEPLOY_SSH_PRIVATE_KEY` |
 | Variable | `DEPLOY_HOST` | `167.99.103.111` |
 | Variable | `DEPLOY_KNOWN_HOSTS` | Output of `ssh-keyscan -t ed25519 167.99.103.111`, checked against the host's `/etc/ssh/ssh_host_ed25519_key.pub` |
 
@@ -143,7 +143,7 @@ Store the mnemonic in Infisical from your own terminal, then shred the file:
 
 ```sh
 infisical secrets set VALAR_FAUCET_ZECD_MNEMONIC="$(ssh root@167.99.103.111 cat /root/valar-faucet-mnemonic.txt)" \
-  --env=prod --path=/testnet-faucet
+  --projectId=c57a6889-6a7c-4d05-a54a-e4a4c0b14ee7 --env=prod --path=/testnet-faucet
 ssh root@167.99.103.111 shred -u /root/valar-faucet-mnemonic.txt
 ```
 
