@@ -56,7 +56,7 @@ A claim moves through these states:
 | `internal/store` | SQLite claims table and the limit checks |
 | `internal/zecd`, `internal/jsonrpc` | zecd JSON-RPC client |
 | `internal/broadcast` | Direct `sendrawtransaction` fan-out to Zakura nodes |
-| `internal/web` | HTTP API and the embedded Valar Group page (`static/`) |
+| `internal/web` | HTTP API and the embedded page (`static/`), styled after valargroup.dev |
 | `deploy/` | systemd units, `zecd.toml`, `faucet.env`, Caddy snippet, pinned zecd version, `install.sh` |
 
 ## Development

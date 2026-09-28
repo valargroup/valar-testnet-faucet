@@ -243,11 +243,13 @@ func TestPagesAndHeaders(t *testing.T) {
 	require.Equal(t, "nosniff", resp.Header.Get("X-Content-Type-Options"))
 	require.Equal(t, "DENY", resp.Header.Get("X-Frame-Options"))
 	page := string(raw)
-	require.Contains(t, page, "Zcash testnet faucet")
+	require.Contains(t, page, "Testnet faucet")
+	require.Contains(t, page, "https://valargroup.dev")
+	require.NotContains(t, page, "valargroup.org")
 	require.NotContains(t, page, "__ASSET_VERSION__")
 	require.Contains(t, page, "/static/app.js?v=")
 
-	for _, path := range []string{"/static/app.js", "/static/styles.css", "/static/logo.png"} {
+	for _, path := range []string{"/static/app.js", "/static/styles.css", "/static/valar-logo.png", "/static/favicon-32.png"} {
 		resp, _ := get(t, a.srv.URL+path)
 		require.Equal(t, http.StatusOK, resp.StatusCode, path)
 		require.Equal(t, "public, max-age=86400", resp.Header.Get("Cache-Control"), path)

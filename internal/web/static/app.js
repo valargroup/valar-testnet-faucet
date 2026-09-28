@@ -81,7 +81,7 @@
     const notes = [];
     if (status.pendingBalance !== "0") notes.push(`+${brief(status.pendingBalance, 3)} confirming`);
     if (status.unshieldedBalance && status.unshieldedBalance !== "0") notes.push(`+${brief(status.unshieldedBalance)} unshielded`);
-    $("stat-pending").textContent = notes.length ? notes.join(" · ") : "shielded, spendable";
+    $("stat-pending").textContent = notes.length ? notes.join(" · ") : "Shielded, spendable";
     $("stat-height").textContent = status.chainHeight ? status.chainHeight.toLocaleString("en-US") : "–";
     $("stat-paid").textContent = String(status.paidCount);
     $("stat-paid-amount").textContent = `${brief(status.capRemaining, 3)} TAZ left today`;
@@ -110,14 +110,17 @@
       }
       const amount = document.createElement("span");
       amount.className = "r-amount";
-      amount.textContent = `${p.amount} TAZ`;
+      const unit = document.createElement("span");
+      unit.className = "unit";
+      unit.textContent = "TAZ";
+      amount.append(document.createTextNode(p.amount), unit);
       const time = document.createElement("span");
       time.className = "r-time";
       time.textContent = ago(p.time);
       li.append(addr, amount, time);
       list.append(li);
     }
-    $("recent-count").textContent = status.recent.length ? `last ${status.recent.length}` : "";
+    $("recent-count").textContent = status.recent.length ? `Last ${status.recent.length} payouts` : "";
 
     if (status.donationAddress) {
       $("donation-address").textContent = status.donationAddress;
