@@ -171,7 +171,7 @@ Send TAZ to the donation address shown on the page or in `/api/status` (`donatio
 
 ### Alerts
 
-`valar-faucet-healthcheck.timer` runs `deploy/healthcheck.py` on the host every 5 minutes. It checks the public site (`/healthz`, then `/readyz`) and reports to the Sentry project **`zakura-snapshots`**. That project's existing `Notify zakura-snapshots-alert via Slack` rule posts to **#zakura-snapshots-alerts**.
+`valar-faucet-healthcheck.timer` runs `deploy/healthcheck.py` on the host every 5 minutes. It checks the public site (`/healthz`, then `/readyz`) and reports to the Sentry project **`zakura-snapshots`**. That project's existing `Notify zakura-snapshots-alert via Slack` rule posts to **#zakura-snapshots-alert**.
 
 Sentry is told two things:
 - **A cron check-in** for monitor `valar-faucet-health`, ok or error. Each check-in also upserts the monitor settings: schedule `*/5 * * * *`, a 5-minute margin, an issue after 2 consecutive bad check-ins, and recovery after 1. When the host or the timer dies, check-ins stop arriving, and the monitor alerts on the missing check-in.

@@ -9,7 +9,7 @@ Type=oneshot
 DynamicUser=yes
 StateDirectory=valar-faucet-healthcheck
 # SENTRY_DSN of the "zakura-snapshots" Sentry project, whose Slack rule posts to
-# #zakura-snapshots-alerts. Root-only; systemd reads it before dropping privileges.
+# #zakura-snapshots-alert. Root-only; systemd reads it before dropping privileges.
 EnvironmentFile=/etc/valar-faucet/sentry.env
 Environment=FAUCET_PUBLIC_URL=https://faucet.testnet.valargroup.dev
 ExecStart=/usr/bin/python3 /opt/valar-faucet/current/deploy/healthcheck.py

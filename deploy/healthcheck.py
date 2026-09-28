@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Valar testnet faucet health check -> Sentry -> Slack (#zakura-snapshots-alerts).
+"""Valar testnet faucet health check -> Sentry -> Slack (#zakura-snapshots-alert).
 
 Run every 5 minutes by valar-faucet-healthcheck.timer. Each run:
 
