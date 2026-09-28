@@ -1,0 +1,77 @@
+# zecd configuration for the Valar testnet faucet wallet.
+# Installed to /etc/valar-faucet/zecd.toml by deploy/install.sh; edit here, not on the host.
+# Reference: https://github.com/zecrocks/zecd/blob/main/zecd.example.toml
+
+network = "test"
+datadir = "/mnt/data/valar-faucet/zecd"
+default_wallet = "default"
+
+[wallets.default]
+dir = "/mnt/data/valar-faucet/zecd/default"
+
+[backend]
+# The archive zakurad on zakura-testnet-1. zecd syncs from it and broadcasts every
+# payout through it; the faucet additionally pushes each transaction to the other
+# Zakura nodes (FAUCET_BROADCAST_NODES).
+server = "zebra://127.0.0.1:18232"
+connect_timeout_secs = 10
+reconnect_base_secs = 1
+reconnect_max_secs = 60
+
+[rpc]
+bind = "127.0.0.1"
+# 18888/9233 belong to the mempool-spam zecd already running on this host.
+port = 18890
+user = "faucet"
+password_file = "/etc/valar-faucet/zecd-rpc.password"
+# Only what the faucet calls, plus read-only methods for operators.
+allowed_methods = [
+  "z_validateaddress",
+  "sendtoaddress",
+  "gettransaction",
+  "getbalances",
+  "getbalance",
+  "getwalletinfo",
+  "getblockchaininfo",
+  "getnewaddress",
+  "listunspent",
+  "listtransactions",
+  "getrpcinfo",
+  "uptime",
+]
+
+[keys]
+age_identity = "/mnt/data/valar-faucet/zecd/identity.txt"
+# Unattended payouts.
+auto_unlock = true
+
+[pools]
+# Post-NU6.3, Ironwood notes arrive at the Orchard receiver.
+enabled = ["orchard"]
+default_receivers = ["orchard"]
+
+[sync]
+interval_secs = 20
+rebroadcast_secs = 60
+# The faucet never reads memos; skipping them makes the wallet ready sooner.
+fetch_memos = false
+
+[spend]
+trusted_confirmations = 3
+untrusted_confirmations = 10
+# Default rung: allows transparent (tm...) and cross-pool (Sapling) recipients.
+privacy_policy = "AllowRevealedRecipients"
+# Split change into payout-sized notes so consecutive claims don't wait for change to
+# confirm. One note per 0.125 TAZ payout, up to 25 in flight.
+target_note_count = 25
+min_split_output_value = 12500000
+# Below systemd's TimeoutStopSec for valar-faucet-zecd.service.
+shutdown_drain_secs = 60
+
+[health]
+enabled = true
+bind = "127.0.0.1"
+port = 9234
+
+[log]
+format = "json"

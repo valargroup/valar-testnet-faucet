@@ -1,0 +1,10 @@
+/dist/
+/release.tar.gz
+/valar-faucet
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.*
+*.password
+.scratch/

@@ -1,0 +1,123 @@
+name: Deploy
+
+# Every push to main is tested, built and deployed to zakura-testnet-1.
+#
+# GitHub Environment "testnet" (deployment branches: main only) provides:
+#   secrets.DEPLOY_SSH_KEY      ed25519 private key authorized for root on the host
+#                               (source of truth: Infisical valargroup/prod /testnet-faucet)
+#   vars.DEPLOY_HOST            host address
+#   vars.DEPLOY_KNOWN_HOSTS     the host's pinned SSH host key line(s)
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: valar-faucet-deploy
+  cancel-in-progress: false
+
+env:
+  PUBLIC_URL: https://faucet.testnet.valargroup.dev
+
+jobs:
+  build:
+    name: Test and build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      release: ${{ steps.release.outputs.id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then echo "$unformatted"; exit 1; fi
+      - run: go vet ./...
+      - run: go test -race ./...
+      - run: shellcheck deploy/install.sh
+      - name: Release id
+        id: release
+        run: echo "id=$(date -u +%Y%m%d%H%M%S)-${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+      - name: Build linux/amd64
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          mkdir -p dist
+          go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_SHA::12}" \
+            -o dist/valar-faucet ./cmd/valar-faucet
+          cp -r deploy dist/deploy
+          tar -C dist -czf release.tar.gz valar-faucet deploy
+          sha256sum release.tar.gz
+      - name: Stash release
+        run: |
+          mkdir -p "$RUNNER_TEMP/release"
+          mv release.tar.gz "$RUNNER_TEMP/release/"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release
+          path: ${{ runner.temp }}/release/release.tar.gz
+          retention-days: 14
+
+  deploy:
+    name: Deploy to zakura-testnet-1
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment:
+      name: testnet
+      url: ${{ env.PUBLIC_URL }}
+    env:
+      RELEASE: ${{ needs.build.outputs.release }}
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_HOST" && test -n "$DEPLOY_KNOWN_HOSTS" && test -n "$DEPLOY_SSH_KEY"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          eval "$(ssh-agent -a "$RUNNER_TEMP/ssh-agent.sock")"
+          ssh-add - <<< "$DEPLOY_SSH_KEY"
+          echo "SSH_AUTH_SOCK=$RUNNER_TEMP/ssh-agent.sock" >> "$GITHUB_ENV"
+      - name: Upload release
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -o BatchMode=yes "root@$DEPLOY_HOST" \
+            "set -e; d=/opt/valar-faucet/releases/$RELEASE; mkdir -p \"\$d\"; tar -xzf - -C \"\$d\" --no-same-owner" \
+            < release.tar.gz
+      - name: Install
+        run: |
+          ssh -o StrictHostKeyChecking=yes -o BatchMode=yes "root@$DEPLOY_HOST" \
+            "/opt/valar-faucet/releases/$RELEASE/deploy/install.sh $RELEASE"
+      - name: Public health check
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 20); do
+            if curl -fsS --max-time 5 "$PUBLIC_URL/healthz"; then
+              curl -fsS --max-time 5 "$PUBLIC_URL/api/status"
+              echo
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "::error::$PUBLIC_URL/healthz did not answer"
+          exit 1
+      - name: Stop ssh-agent
+        if: always()
+        run: ssh-agent -k >/dev/null 2>&1 || true

@@ -1,0 +1,11 @@
+# Valar testnet faucet. Installed to /etc/caddy/conf.d/valar-faucet.caddy by
+# deploy/install.sh; zakura-testnet-1's managed Caddyfile imports /etc/caddy/conf.d/*.caddy.
+
+faucet.testnet.valargroup.dev {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8093 {
+		# The faucet rate-limits on this header and trusts it only from loopback.
+		# header_up replaces any client-supplied value.
+		header_up X-Real-IP {remote_host}
+	}
+}

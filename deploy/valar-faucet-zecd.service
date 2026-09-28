@@ -1,0 +1,40 @@
+[Unit]
+Description=zecd wallet for the Valar testnet faucet
+Documentation=https://github.com/zecrocks/zecd
+After=network-online.target zakurad.service
+Wants=network-online.target
+# Only start once the wallet has been initialized (see README "Wallet setup").
+ConditionPathExists=/mnt/data/valar-faucet/zecd/default/keys.toml
+
+[Service]
+Type=simple
+User=valar-zecd
+Group=valar-zecd
+ExecStart=/opt/valar-faucet/zecd/current/zecd --conf /etc/valar-faucet/zecd.toml run
+Restart=always
+RestartSec=5
+# Above [spend] shutdown_drain_secs (60) so accepted sends finish.
+TimeoutStopSec=90
+# Share the host politely with zakurad.
+Nice=10
+MemoryMax=3G
+# zecd mlocks the decrypted seed so it never reaches swap.
+LimitMEMLOCK=64M
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+ReadWritePaths=/mnt/data/valar-faucet/zecd
+
+[Install]
+WantedBy=multi-user.target

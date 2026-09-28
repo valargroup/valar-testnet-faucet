@@ -1,0 +1,37 @@
+[Unit]
+Description=Valar Group Zcash testnet faucet
+Documentation=https://github.com/valargroup/valar-testnet-faucet
+After=network-online.target valar-faucet-zecd.service
+Wants=network-online.target valar-faucet-zecd.service
+
+[Service]
+Type=simple
+User=valar-faucet
+Group=valar-faucet
+EnvironmentFile=/opt/valar-faucet/current/deploy/faucet.env
+LoadCredential=zecd-rpc-password:/etc/valar-faucet/zecd-rpc.password
+ExecStart=/opt/valar-faucet/current/valar-faucet
+Restart=always
+RestartSec=3
+# The worker finishes an in-flight send (zecd send timeout 150s) before exiting.
+TimeoutStopSec=180
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+ReadWritePaths=/mnt/data/valar-faucet/app
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

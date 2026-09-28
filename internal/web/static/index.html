@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>Zcash Testnet Faucet · Valar Group</title>
+  <meta name="description" content="Free testnet ZEC (TAZ) for Zcash builders, from Valar Group. Paid from a zecd wallet and broadcast directly to Zakura nodes." />
+  <meta name="theme-color" content="#0a0a0c" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Zcash Testnet Faucet · Valar Group" />
+  <meta property="og:description" content="Free testnet ZEC (TAZ) for Zcash builders." />
+  <link rel="icon" href="/static/logo.png?v=__ASSET_VERSION__" type="image/png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css?v=__ASSET_VERSION__" />
+  <script src="/static/app.js?v=__ASSET_VERSION__" defer></script>
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <a class="brand" href="https://valargroup.org" aria-label="Valar Group">
+      <img class="brand-mark" src="/static/logo.png?v=__ASSET_VERSION__" width="38" height="38" alt="" />
+      <span class="brand-word">VALAR<span class="dim">GROUP</span></span>
+    </a>
+    <nav class="top-links">
+      <span class="kicker">Testnet</span>
+      <a class="top-link" id="status-link" href="https://status.testnet.zakura.valargroup.dev/" target="_blank" rel="noopener">Node status <span aria-hidden="true">↗</span></a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <p class="eyebrow">Zcash testnet faucet</p>
+      <h1>Testnet <span class="accent">TAZ</span>,<br />on tap.</h1>
+      <p class="lede">
+        <span class="payout-amount">0.125</span> TAZ per day for anyone building on Zcash.
+        Paid from a shielded <span class="mono-inline">zecd</span> wallet and broadcast straight to Zakura nodes.
+      </p>
+    </section>
+
+    <section class="claim-wrap" aria-labelledby="claim-title">
+      <form class="card claim" id="claim-form" novalidate>
+        <div class="card-head">
+          <h2 id="claim-title">Request testnet funds</h2>
+          <span class="state" id="faucet-state" data-tone="idle">Connecting…</span>
+        </div>
+
+        <label class="field-label" for="address">Your testnet address</label>
+        <div class="field">
+          <input id="address" name="address" type="text" inputmode="text" autocomplete="off" autocapitalize="off"
+                 autocorrect="off" spellcheck="false" maxlength="512" required
+                 placeholder="utest1… · ztestsapling1… · tm…" />
+          <button class="btn-gold" id="submit" type="submit" disabled>
+            Request <span class="payout-amount">0.125</span> TAZ
+          </button>
+        </div>
+        <p class="hint">One payout per IP address every 24 hours. Unified, Sapling and transparent testnet addresses are accepted.</p>
+
+        <div class="alert" id="alert" role="alert" hidden></div>
+
+        <div class="result" id="result" hidden aria-live="polite">
+          <ol class="steps" id="steps">
+            <li data-step="queued"><span class="dot"></span>Queued</li>
+            <li data-step="sending"><span class="dot"></span>Sending</li>
+            <li data-step="sent"><span class="dot"></span>Sent</li>
+          </ol>
+          <p class="result-msg" id="result-msg"></p>
+          <div class="tx" id="tx" hidden>
+            <span class="tx-label">Transaction</span>
+            <code class="tx-id" id="tx-id"></code>
+            <div class="tx-actions">
+              <button class="btn-ghost" type="button" data-copy-target="tx-id">Copy</button>
+              <a class="btn-ghost" id="tx-link" target="_blank" rel="noopener" hidden>Explorer <span aria-hidden="true">↗</span></a>
+            </div>
+            <p class="tx-broadcast" id="tx-broadcast"></p>
+          </div>
+        </div>
+      </form>
+    </section>
+
+    <section class="stats" aria-label="Faucet status">
+      <div class="stat">
+        <span class="stat-label">Faucet balance</span>
+        <span class="stat-value"><span id="stat-balance">–</span> <small>TAZ</small></span>
+        <span class="stat-sub" id="stat-pending"></span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Chain height</span>
+        <span class="stat-value" id="stat-height">–</span>
+        <span class="stat-sub">Zcash testnet</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Paid · 24h</span>
+        <span class="stat-value" id="stat-paid">–</span>
+        <span class="stat-sub" id="stat-paid-amount"></span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Broadcast</span>
+        <span class="stat-value"><span id="stat-nodes">–</span> <small>nodes</small></span>
+        <span class="stat-sub">Zakura, direct</span>
+      </div>
+    </section>
+
+    <section class="lower">
+      <div class="card">
+        <div class="sec-head">
+          <h2>Recent payouts</h2>
+          <span class="count" id="recent-count"></span>
+        </div>
+        <ul class="recent" id="recent">
+          <li class="empty">No payouts yet.</li>
+        </ul>
+      </div>
+
+      <div class="card give-back" id="give-back" hidden>
+        <div class="sec-head">
+          <h2>Done testing?</h2>
+        </div>
+        <p class="muted">Send spare TAZ back so the next builder can use it.</p>
+        <code class="addr" id="donation-address"></code>
+        <button class="btn-ghost" type="button" data-copy-target="donation-address">Copy address</button>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="foot-stripe" aria-hidden="true"></div>
+    <div class="foot-inner">
+      <span>© Valar Group · Zcash testnet infrastructure</span>
+      <span class="foot-meta">
+        <a href="https://valargroup.org">valargroup.org</a>
+        <span aria-hidden="true">·</span>
+        <a href="https://github.com/valargroup/valar-testnet-faucet">source</a>
+      </span>
+    </div>
+  </footer>
+</body>
+</html>
