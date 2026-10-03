@@ -55,7 +55,7 @@ class QualificationTests(unittest.TestCase):
         for profile, age in [('staging', 0), ('public-testnet', 91)]:
             envelope = self.envelope(); envelope['selectedProfile'] = profile; envelope['generatedAt'] -= age
             with patch.object(subject, 'fetch', return_value=envelope), patch.object(subject, 'rpc') as rpc:
-                with self.assertRaises(AssertionError):
+                with self.assertRaises(ValueError):
                     subject.gate(self.config)
                 rpc.assert_not_called()
 
@@ -70,7 +70,7 @@ class QualificationTests(unittest.TestCase):
                     return {'subversion': version}
                 self.fail('Reference rejection should precede payout')
             with patch.object(subject, 'fetch', return_value=self.envelope()), patch.object(subject, 'rpc', side_effect=rpc):
-                with self.assertRaises(AssertionError):
+                with self.assertRaises(ValueError):
                     subject.gate(self.config)
 
 

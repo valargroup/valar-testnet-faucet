@@ -16,6 +16,11 @@ AMOUNT_ZAT = 12500000
 API = 'https://faucet.testnet.valargroup.dev/api'
 
 
+def require(condition):
+    if not condition:
+        raise ValueError("Qualification gate failed")
+
+
 def fetch(url, body=None):
     request = urllib.request.Request(url, None if body is None else json.dumps(body).encode(),
         {'Content-Type': 'application/json', 'Origin': 'https://zakura.com'})
@@ -50,28 +55,28 @@ def persist(path, value, exclusive=False):
 
 def gate(config):
     envelope = fetch(config['selectorUrl'])
-    assert envelope['selectedProfile'] == 'public-testnet'
-    assert envelope['selectionState'] == 'selected'
-    assert 0 <= time.time() - envelope['generatedAt'] <= 90
+    require(envelope['selectedProfile'] == 'public-testnet')
+    require(envelope['selectionState'] == 'selected')
+    require(0 <= time.time() - envelope['generatedAt'] <= 90)
     status = envelope['status']
-    assert status['status'] == 'live' and status['network']['magic'] == 'fa1af9bf'
-    assert status['observation']['validatorsAgree']
-    assert status['chain']['height'] >= ACTIVATION + 2
+    require(status['status'] == 'live' and status['network']['magic'] == 'fa1af9bf')
+    require(status['observation']['validatorsAgree'])
+    require(status['chain']['height'] >= ACTIVATION + 2)
     local = rpc(config['nodeRpc'], 'getblockchaininfo', [])
-    assert local['chain'] == 'test' and local['blocks'] >= ACTIVATION + 2
+    require(local['chain'] == 'test' and local['blocks'] >= ACTIVATION + 2)
     parameters = rpc(config['nodeRpc'], 'getnetworkparameters', [local['blocks']])
-    assert parameters['networkMagic'] == 'fa1af9bf'
-    assert parameters['activationHeight'] == ACTIVATION and parameters['branchId'] == BRANCH
+    require(parameters['networkMagic'] == 'fa1af9bf')
+    require(parameters['activationHeight'] == ACTIVATION and parameters['branchId'] == BRANCH)
     independent = rpc(config['referenceRpc'], 'getblockchaininfo', [])
     software = rpc(config['referenceRpc'], 'getnetworkinfo', [])
-    assert re.match(r'^/Zebra:7\.', software['subversion'])
-    assert independent['chain'] == 'test' and independent['blocks'] >= ACTIVATION + 2
-    assert independent['consensus']['chaintip'].lower().removeprefix('0x') == BRANCH
+    require(re.match(r'^/Zebra:7\.', software['subversion']))
+    require(independent['chain'] == 'test' and independent['blocks'] >= ACTIVATION + 2)
+    require(independent['consensus']['chaintip'].lower().removeprefix('0x') == BRANCH)
     checkpoint = rpc(config['referenceRpc'], 'getblockhash', [ACTIVATION + 2])
-    assert rpc(config['nodeRpc'], 'getblockhash', [ACTIVATION + 2]) == checkpoint
+    require(rpc(config['nodeRpc'], 'getblockhash', [ACTIVATION + 2]) == checkpoint)
     faucet = fetch(API + '/status')
-    assert faucet['ready'] and faucet['network'] == 'testnet'
-    assert decimal.Decimal(faucet['payout']) * 100000000 == AMOUNT_ZAT
+    require(faucet['ready'] and faucet['network'] == 'testnet')
+    require(decimal.Decimal(faucet['payout']) * 100000000 == AMOUNT_ZAT)
     return {'observedAt': int(time.time()), 'nodeHeight': local['blocks'],
         'referenceHeight': independent['blocks'], 'checkpointHash': checkpoint,
         'selectorGeneration': envelope['generation'], 'branchId': BRANCH}
@@ -93,8 +98,8 @@ def qualify(config):
             'gate': evidence, 'attemptStartedAt': int(time.time())}
         persist(receipt, state, exclusive=True)
         response = fetch(API + '/claim', state['request'])
-        assert re.fullmatch('[0-9a-f]{32}', response['id'])
-        assert decimal.Decimal(response['amount']) * 100000000 == AMOUNT_ZAT
+        require(re.fullmatch('[0-9a-f]{32}', response['id']))
+        require(decimal.Decimal(response['amount']) * 100000000 == AMOUNT_ZAT)
         state.update(claimId=response['id'], response=response)
         persist(receipt, state)
     claim = fetch(API + '/claim/' + state['claimId'])
@@ -104,17 +109,17 @@ def qualify(config):
         return 'review'
     if claim['status'] != 'sent':
         return 'pending'
-    assert re.fullmatch('[0-9a-f]{64}', claim['txid'])
+    require(re.fullmatch('[0-9a-f]{64}', claim['txid']))
     transaction = rpc(config['nodeRpc'], 'getrawtransaction', [claim['txid'], 1])
     raw = bytes.fromhex(transaction['hex'])
-    assert transaction['version'] == 6 and raw[8:12][::-1].hex() == BRANCH
+    require(transaction['version'] == 6 and raw[8:12][::-1].hex() == BRANCH)
     if transaction.get('confirmations', 0) < 2:
         return 'pending'
-    assert transaction['height'] >= ACTIVATION
-    assert any(RECIPIENT in output['scriptPubKey'].get('addresses', [])
+    require(transaction['height'] >= ACTIVATION)
+    require(any(RECIPIENT in output['scriptPubKey'].get('addresses', [])
         and decimal.Decimal(str(output['value'])) * 100000000 == AMOUNT_ZAT
-        for output in transaction['vout'])
-    assert rpc(config['referenceRpc'], 'getblockhash', [transaction['height']]) == transaction['blockhash']
+        for output in transaction['vout']))
+    require(rpc(config['referenceRpc'], 'getblockhash', [transaction['height']]) == transaction['blockhash'])
     state['accepted'] = {key: transaction[key] for key in ('txid', 'height', 'blockhash', 'confirmations')}
     state['accepted'].update(version=6, branchId=BRANCH, recipient=RECIPIENT, amountZat=AMOUNT_ZAT,
         observedAt=int(time.time()))
