@@ -128,6 +128,29 @@ The faucet runs on **zakura-testnet-1** (167.99.103.111, DO project `zakura-test
 
 If a fleet deploy ever installs a Caddyfile without that line, the faucet drops off the public hostname. `install.sh` warns when this happens, and the deploy's public health check fails.
 
+### NU7 readiness
+
+The pinned zecd 0.9.0-rc1 release uses Zakura Common 2.2.0 and schedules public
+Testnet NU7 at height 4,465,026 with branch ID `77190ad9`. The older 0.8.1
+release does not schedule this activation. The faucet API also allows the
+`https://zakura.com` dashboard origin on its three API routes; other origins do
+not receive CORS permission. Payout limits and wallet ownership checks apply
+unchanged.
+
+Before upgrading a funded wallet, save a consistent SQLite backup and its
+matching encrypted wallet files on the same host, preserve the old runtime and
+configuration, and rehearse the new binary against an isolated copy. Check
+there are no outstanding sends before the copy. Bind the rehearsal RPC to
+loopback on a separate port, allow only read methods, and do not run faucet
+workers against it. Verify the copied balance and sync state before restarting
+the existing service. Rollback after a schema migration restores the matching
+pre-upgrade database copy; do not run the old binary against a migrated database.
+
+After upgrading, verify the service version, wallet balance and advancing scan
+height, API readiness, an actual claim, and cross-origin preflight from
+`https://zakura.com`. A real post-activation v6 payout must be checked after
+activation; pre-activation claims cannot establish that result.
+
 ### Wallet
 
 The faucet wallet is the **testnet miner's seed** (BIP-39, BIP-44 account 0).
