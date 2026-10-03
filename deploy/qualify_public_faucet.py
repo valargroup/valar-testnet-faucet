@@ -136,7 +136,8 @@ def main():
         result = qualify(config)
     except (AssertionError, KeyError, ValueError, OSError) as error:
         print('Qualification pending or requires investigation: ' + type(error).__name__)
-        return 1
+        # Missing activation/selection is normal before the single attempt.
+        return 1 if Path(config['receipt']).exists() else 0
     print('Public faucet qualification: ' + result)
     return 2 if result in ('ambiguous', 'review') else 0
 
