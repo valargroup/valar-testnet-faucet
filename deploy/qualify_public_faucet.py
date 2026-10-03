@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+"""Make one fenced Testnet payout after independent NU7 and website qualification."""
+import argparse
+import decimal
+import json
+import os
+from pathlib import Path
+import re
+import time
+import urllib.request
+
+ACTIVATION = 4465026
+BRANCH = '77190ad9'
+RECIPIENT = 'tmDCiNGTbRz1Y1eYWyrPBFCaH61JSffwzSr'
+AMOUNT_ZAT = 12500000
+API = 'https://faucet.testnet.valargroup.dev/api'
+
+
+def fetch(url, body=None):
+    request = urllib.request.Request(url, None if body is None else json.dumps(body).encode(),
+        {'Content-Type': 'application/json', 'Origin': 'https://zakura.com'})
+    with urllib.request.urlopen(request, timeout=12) as response:
+        content = response.read(2097153)
+        if len(content) > 2097152:
+            raise ValueError('HTTP response exceeds bounded size')
+        return json.loads(content)
+
+
+def rpc(url, method, params):
+    response = fetch(url, {'jsonrpc': '2.0', 'id': 1, 'method': method, 'params': params})
+    if response.get('error'):
+        raise ValueError('RPC did not return a successful result')
+    return response['result']
+
+
+def persist(path, value, exclusive=False):
+    temporary = path if exclusive else path.with_suffix('.tmp')
+    with temporary.open('x' if exclusive else 'w') as file:
+        file.write(json.dumps(value, indent=2) + '\n')
+        file.flush()
+        os.fsync(file.fileno())
+    if not exclusive:
+        temporary.replace(path)
+    descriptor = os.open(path.parent, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def gate(config):
+    envelope = fetch(config['selectorUrl'])
+    assert envelope['selectedProfile'] == 'public-testnet'
+    assert envelope['selectionState'] == 'selected'
+    assert 0 <= time.time() - envelope['generatedAt'] <= 90
+    status = envelope['status']
+    assert status['status'] == 'live' and status['network']['magic'] == 'fa1af9bf'
+    assert status['observation']['validatorsAgree']
+    assert status['chain']['height'] >= ACTIVATION + 2
+    local = rpc(config['nodeRpc'], 'getblockchaininfo', [])
+    assert local['chain'] == 'test' and local['blocks'] >= ACTIVATION + 2
+    parameters = rpc(config['nodeRpc'], 'getnetworkparameters', [local['blocks']])
+    assert parameters['networkMagic'] == 'fa1af9bf'
+    assert parameters['activationHeight'] == ACTIVATION and parameters['branchId'] == BRANCH
+    independent = rpc(config['referenceRpc'], 'getblockchaininfo', [])
+    software = rpc(config['referenceRpc'], 'getnetworkinfo', [])
+    assert re.match(r'^/Zebra:7\.', software['subversion'])
+    assert independent['chain'] == 'test' and independent['blocks'] >= ACTIVATION + 2
+    assert independent['consensus']['chaintip'].lower().removeprefix('0x') == BRANCH
+    checkpoint = rpc(config['referenceRpc'], 'getblockhash', [ACTIVATION + 2])
+    assert rpc(config['nodeRpc'], 'getblockhash', [ACTIVATION + 2]) == checkpoint
+    faucet = fetch(API + '/status')
+    assert faucet['ready'] and faucet['network'] == 'testnet'
+    assert decimal.Decimal(faucet['payout']) * 100000000 == AMOUNT_ZAT
+    return {'observedAt': int(time.time()), 'nodeHeight': local['blocks'],
+        'referenceHeight': independent['blocks'], 'checkpointHash': checkpoint,
+        'selectorGeneration': envelope['generation'], 'branchId': BRANCH}
+
+
+def qualify(config):
+    receipt = Path(config['receipt'])
+    state = json.loads(receipt.read_text()) if receipt.exists() else None
+    if state and state.get('accepted'):
+        return 'complete'  # No network calls after acceptance.
+    if state and not state.get('claimId'):
+        return 'ambiguous'  # A durable attempt without an ID must never POST again.
+    if state is None:
+        evidence = gate(config)
+        if not config.get('enabled', False):
+            return 'qualified-read-only'
+        receipt.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        state = {'request': {'address': RECIPIENT}, 'amountZat': AMOUNT_ZAT,
+            'gate': evidence, 'attemptStartedAt': int(time.time())}
+        persist(receipt, state, exclusive=True)
+        response = fetch(API + '/claim', state['request'])
+        assert re.fullmatch('[0-9a-f]{32}', response['id'])
+        assert decimal.Decimal(response['amount']) * 100000000 == AMOUNT_ZAT
+        state.update(claimId=response['id'], response=response)
+        persist(receipt, state)
+    claim = fetch(API + '/claim/' + state['claimId'])
+    state['claim'] = claim
+    persist(receipt, state)
+    if claim['status'] in ('failed', 'review'):
+        return 'review'
+    if claim['status'] != 'sent':
+        return 'pending'
+    assert re.fullmatch('[0-9a-f]{64}', claim['txid'])
+    transaction = rpc(config['nodeRpc'], 'getrawtransaction', [claim['txid'], 1])
+    raw = bytes.fromhex(transaction['hex'])
+    assert transaction['version'] == 6 and raw[8:12][::-1].hex() == BRANCH
+    if transaction.get('confirmations', 0) < 2:
+        return 'pending'
+    assert transaction['height'] >= ACTIVATION
+    assert any(RECIPIENT in output['scriptPubKey'].get('addresses', [])
+        and decimal.Decimal(str(output['value'])) * 100000000 == AMOUNT_ZAT
+        for output in transaction['vout'])
+    assert rpc(config['referenceRpc'], 'getblockhash', [transaction['height']]) == transaction['blockhash']
+    state['accepted'] = {key: transaction[key] for key in ('txid', 'height', 'blockhash', 'confirmations')}
+    state['accepted'].update(version=6, branchId=BRANCH, recipient=RECIPIENT, amountZat=AMOUNT_ZAT,
+        observedAt=int(time.time()))
+    persist(receipt, state)
+    return 'complete'
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--config', type=Path, required=True)
+    args = parser.parse_args()
+    config = json.loads(args.config.read_text())
+    try:
+        result = qualify(config)
+    except (AssertionError, KeyError, ValueError, OSError) as error:
+        print('Qualification pending or requires investigation: ' + type(error).__name__)
+        return 1
+    print('Public faucet qualification: ' + result)
+    return 2 if result in ('ambiguous', 'review') else 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

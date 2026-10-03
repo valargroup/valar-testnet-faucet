@@ -235,3 +235,29 @@ systemctl restart valar-faucet
 ```
 
 **Upgrading zecd:** bump both `ZECD_VERSION` and `ZECD_SHA256` in `deploy/zecd.version`; the next deploy installs it and restarts zecd.
+
+### One public NU7 payout qualification
+
+`deploy/install-qualification.sh` installs a separate unprivileged timer and preserves
+an existing `/etc/valar-faucet/qualification.json`. The example config has
+`enabled: false`. Enabling this payout check does not arm the network selector:
+every new attempt requires the fresh dashboard to have selected public Testnet,
+three validators to agree, and both the local node and independent Zebra 7
+reference to have reached activation plus two blocks on branch `77190ad9` with a
+common checkpoint. Until then the check sends no payout. The reference endpoint
+must remain restricted to the existing observer host.
+
+The authorized controlled recipient is the existing test address
+`tmDCiNGTbRz1Y1eYWyrPBFCaH61JSffwzSr`; the check requests exactly 0.125 TAZ.
+The persistent receipt is written and synced before POST. If the request is
+ambiguous, no automatic second POST is possible: reconcile the API's request and
+claim history manually before changing the receipt. An existing claim ID resumes
+only polling. Acceptance requires v6 with NU7 branch, the exact recipient/amount,
+two confirmations, and the mined block hash on the independent reference.
+An accepted receipt makes subsequent timer runs a cheap local no-op.
+
+The timer checks every two minutes, has a bounded 90-second service invocation,
+and holds no wallet or SSH credentials. Check it with
+`systemctl status valar-faucet-qualification.timer` and
+`journalctl -u valar-faucet-qualification.service -n 20`.
+The real post-activation payout remains pending until these gates pass.

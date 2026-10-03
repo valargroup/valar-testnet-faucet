@@ -1,0 +1,7 @@
+{
+  "enabled": false,
+  "selectorUrl": "https://api.nu7.valargroup.dev/v1/dashboard",
+  "nodeRpc": "http://127.0.0.1:18232",
+  "referenceRpc": "http://164.92.209.78:28232",
+  "receipt": "/var/lib/valar-faucet-qualification/public-nu7-payout.json"
+}
