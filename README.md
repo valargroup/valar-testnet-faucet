@@ -6,7 +6,7 @@ This faucet hands out testnet ZEC (TAZ) on the public Zcash testnet:
 
 - **0.125 TAZ per IP address per rolling 24 hours.** IPv6 clients are limited per /64.
 - Each address can receive a payout once per 24 hours.
-- A global cap of 12.5 TAZ per 24 hours stops a botnet from draining the wallet.
+- A global cap of 18.75 TAZ (150 payouts) per 24 hours stops a botnet from draining the wallet.
 
 Payouts come from a [zecd](https://github.com/zecrocks/zecd) wallet. zecd syncs from, and broadcasts through, the archive `zakurad` on `zakura-testnet-1`. Each payout is also pushed straight to every Zakura testnet node with `sendrawtransaction`, so it doesn't have to wait for gossip.
 
