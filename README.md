@@ -238,7 +238,8 @@ systemctl restart valar-faucet
 
 ### One public NU7 payout qualification
 
-`deploy/install-qualification.sh` installs a separate unprivileged timer and preserves
+`deploy/install-qualification.sh` requires Python 3.11+ (for joining-config parsing),
+installs a separate unprivileged timer, and preserves
 an existing `/etc/valar-faucet/qualification.json`. The example config has
 `enabled: false`. Enabling this payout check does not arm the network selector:
 every new attempt requires the fresh dashboard to have selected public Testnet,

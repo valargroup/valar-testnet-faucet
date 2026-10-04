@@ -60,7 +60,7 @@ class QualificationTests(unittest.TestCase):
                 'nodeRevision':'a'*40, 'config':config, 'configSha256':hashlib.sha256(config.encode()).hexdigest()},
             'rules': {'atTip':{**rules, 'effectiveHeight':subject.ACTIVATION+2},
                 'nextBlock':{**rules, 'effectiveHeight':subject.ACTIVATION+3}},
-            'capabilities':{'faucet':{'apiUrl':subject.API, 'claimZat':subject.AMOUNT_ZAT}}}
+            'capabilities':{'faucet':{'apiUrl':subject.API, 'claimZat':subject.AMOUNT_ZAT}, 'snapshot':None}}
         self.digest(envelope)
         return envelope
 
@@ -73,6 +73,7 @@ class QualificationTests(unittest.TestCase):
             lambda value: value['network'].update(config='[network.network]\nnetwork_name="Custom"\n'),
             lambda value: value['rules']['nextBlock'].update(effectiveHeight=subject.ACTIVATION+2),
             lambda value: value['capabilities']['faucet'].update(apiUrl='https://example.invalid'),
+            lambda value: value['capabilities'].update(snapshot={'networkId':'staging'}),
             lambda value: value['network'].update(configSha256='0'*64)]
         for mutation in mutations:
             value = self.envelope(); mutation(value); self.digest(value)

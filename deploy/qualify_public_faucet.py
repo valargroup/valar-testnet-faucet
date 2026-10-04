@@ -88,6 +88,8 @@ def validate_envelope(envelope):
         require(rules['difficulty']['averagingWindowBlocks'] == network['daaWindowBlocks'])
     capability = envelope['capabilities']['faucet']
     require(capability['apiUrl'] == API and capability['claimZat'] == AMOUNT_ZAT)
+    # Public snapshots remain disabled until a separately qualified artifact exists.
+    require(manifest.get('snapshot') is None and envelope['capabilities']['snapshot'] is None)
 
 
 def gate(config):
