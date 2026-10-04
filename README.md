@@ -173,13 +173,19 @@ Send TAZ to the donation address shown on the page or in `/api/status` (`donatio
 
 `valar-faucet-healthcheck.timer` runs `deploy/healthcheck.py` on the host every 5 minutes. It checks the public site (`/healthz`, then `/readyz`) and reports to the Sentry project **`zakura-snapshots`**. That project's existing `Notify zakura-snapshots-alert via Slack` rule posts to **#zakura-snapshots-alert**.
 
-Sentry is told two things:
-- **A cron check-in** for monitor `valar-faucet-health`, ok or error. Each check-in also upserts the monitor settings: schedule `*/5 * * * *`, a 5-minute margin, an issue after 2 consecutive bad check-ins, and recovery after 1. When the host or the timer dies, check-ins stop arriving, and the monitor alerts on the missing check-in.
-- **One error event per outage** once a failure repeats, naming the reason:
-  - `site down (HTTP 502)`
-  - `not accepting claims: faucet is empty`
-  - `not accepting claims: wallet syncing`
-  - `not accepting claims: wallet unreachable`
+Sentry receives a cron check-in for monitor `valar-faucet-health`, ok or error.
+Each check-in upserts the schedule `*/5 * * * *`, a 5-minute margin, an issue after
+2 consecutive bad check-ins, and recovery after 1 healthy check-in. When the host
+or timer dies, check-ins stop arriving and the monitor alerts on missing check-ins.
+The cron incident is the only faucet health issue and Sentry resolves it on recovery.
+
+Failure reasons (site/TLS failure, empty wallet, wallet syncing or unreachable) are
+logged by the healthcheck service. No separate error event is emitted: those issues
+cannot be resolved by a healthy cron check-in. If Sentry rejects a recovery check-in,
+the script retains local outage state and retries on the next healthy run.
+
+Error issues created by older versions require a one-time manual resolution after
+confirming recovery; the updated checker does not create more of them.
 
 The DSN comes from Infisical ("Zakura snapshots" / `prod` / `SENTRY_DSN`). Place it on the host once; `install.sh` enables the timer only when this file exists:
 

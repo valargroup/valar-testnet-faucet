@@ -10,9 +10,8 @@ Run every 5 minutes by valar-faucet-healthcheck.timer. Each run:
    after 2 consecutive error or missed check-ins; a dead host or timer sends nothing,
    so the missed check-in is the dead-man signal. The Sentry project's existing Slack
    rule routes new and regressed issues to the channel.
-3. When a failure reaches the second consecutive run, sends one error event that
-   names the reason, fingerprinted per outage, so Slack says *why* once per outage
-   rather than every five minutes.
+3. Logs the failure reason locally. The cron incident is the only Sentry issue:
+   healthy check-ins resolve it automatically, with no separate error issues to orphan.
 
 Mirrors the zakura-snapshots check scripts, but talks to Sentry's HTTP APIs directly,
 so the host needs no sentry-cli. Configuration comes from the environment:
@@ -30,7 +29,6 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-import uuid
 
 MONITOR_SLUG = "valar-faucet-health"
 MONITOR_CONFIG = {
@@ -41,7 +39,6 @@ MONITOR_CONFIG = {
     "recovery_threshold": 1,
     "timezone": "UTC",
 }
-ALERT_AFTER = 2  # consecutive failed runs before the reason event (matches the monitor)
 TIMEOUT = 15
 
 
@@ -101,27 +98,6 @@ class Sentry:
         body = json.dumps({"status": "ok" if ok else "error", "monitor_config": MONITOR_CONFIG}).encode()
         return self._post(url, body, {"Content-Type": "application/json"})
 
-    def event(self, message: str, reason: str, outage_id: str) -> int:
-        event_id = uuid.uuid4().hex
-        event = {
-            "event_id": event_id,
-            "timestamp": time.time(),
-            "platform": "other",
-            "level": "error",
-            "logger": "valar-faucet-healthcheck",
-            "message": {"formatted": message},
-            "tags": {"alert": "valar_faucet", "check": "health", "network": "testnet"},
-            # One issue per outage and reason: the Slack rule fires on new issues.
-            "fingerprint": ["valar-faucet-health", reason.split(":")[0], outage_id],
-        }
-        envelope = "\n".join([
-            json.dumps({"event_id": event_id, "dsn": self.dsn}),
-            json.dumps({"type": "event"}),
-            json.dumps(event),
-        ]).encode() + b"\n"
-        auth = f"Sentry sentry_version=7, sentry_key={self.key}, sentry_client=valar-faucet-healthcheck/1"
-        return self._post(f"{self.base}/api/{self.project}/envelope/", envelope,
-                          {"Content-Type": "application/x-sentry-envelope", "X-Sentry-Auth": auth})
 
 
 def load_state(path: str) -> dict:
@@ -142,25 +118,27 @@ def save_state(path: str, state: dict) -> None:
 def run(base: str, sentry: Sentry | None, state_path: str) -> int:
     reason = check(base)
     state = load_state(state_path)
-    if reason is None:
-        if state.get("failures"):
-            log(f"recovered after {state['failures']} failed run(s)")
-        state = {"failures": 0}
-    else:
-        failures = state.get("failures", 0) + 1
-        outage_id = state.get("outage_id") or time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-        state = {"failures": failures, "outage_id": outage_id, "alerted": state.get("alerted", False)}
+    failures = state.get("failures", 0)
+    if reason is not None:
+        failures += 1
         log(f"UNHEALTHY ({failures} in a row): {reason}")
-        if sentry and failures >= ALERT_AFTER and not state["alerted"]:
-            msg = f"Valar testnet faucet {reason} — {base}"
-            status = sentry.event(msg, reason, outage_id)
-            log(f"sent Sentry event (HTTP {status})")
-            state["alerted"] = 200 <= status < 300
+        state = {"failures": failures}
     if sentry:
         status = sentry.checkin(reason is None)
+        accepted = 200 <= status < 300
         log(f"check-in {'ok' if reason is None else 'error'} (HTTP {status})")
+    else:
+        accepted = True
+        if reason is None:
+            log("healthy (SENTRY_DSN unset; not reporting)")
+    if reason is None and accepted:
+        if failures:
+            log(f"recovered after {failures} failed run(s)")
+        state = {"failures": 0}
     elif reason is None:
-        log("healthy (SENTRY_DSN unset; not reporting)")
+        # Keep the outage evidence until Sentry accepts recovery. Every subsequent
+        # healthy run sends another ok check-in, including after a process restart.
+        log("faucet healthy; recovery check-in not accepted, will retry")
     save_state(state_path, state)
     return 0 if reason is None else 1
 
@@ -173,6 +151,7 @@ def self_test() -> int:
 
     faucet = {"health": 200, "ready": (200, "ready\n")}
     received: list[tuple[str, bytes]] = []
+    response_status = [202]
 
     class Faucet(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
@@ -187,7 +166,7 @@ def self_test() -> int:
     class FakeSentry(http.server.BaseHTTPRequestHandler):
         def do_POST(self):
             received.append((self.path, self.rfile.read(int(self.headers["Content-Length"]))))
-            self.send_response(202)
+            self.send_response(response_status[0])
             self.end_headers()
 
         def log_message(self, *a):
@@ -217,26 +196,39 @@ def self_test() -> int:
 
     received.clear()
     run(base, sentry, state)
-    paths = [p for p, _ in received]
-    expect(paths == ["/api/4242/envelope/", "/api/4242/cron/valar-faucet-health/publickey/"], "second failure: event + check-in")
-    event = json.loads(received[0][1].split(b"\n")[2])
-    expect("faucet is empty" in event["message"]["formatted"], "event names the reason")
-    expect(event["level"] == "error" and event["fingerprint"][1] == "not accepting claims", "event fingerprint")
+    expect(len(received) == 1 and received[0][0].endswith("/cron/valar-faucet-health/publickey/"),
+           "second failure only reports a cron check-in, never a separate error issue")
+    expect(load_state(state) == {"failures": 2}, "repeated failure is persisted")
 
-    received.clear()
-    run(base, sentry, state)
-    expect([p for p, _ in received] == ["/api/4242/cron/valar-faucet-health/publickey/"], "one event per outage")
-
+    # Recovery must survive a rejected check-in and a new process/client instance.
     faucet["ready"] = (200, "ready\n")
+    response_status[0] = 500
     received.clear()
-    expect(run(base, sentry, state) == 0 and load_state(state) == {"failures": 0}, "recovery resets state")
+    expect(run(base, sentry, state) == 0, "healthy faucet stays healthy during Sentry outage")
+    expect(json.loads(received[-1][1])["status"] == "ok", "recovery sends ok")
+    expect(load_state(state) == {"failures": 2}, "failed recovery delivery retains outage")
+    response_status[0] = 202
+    replacement = Sentry(sentry.dsn)
+    expect(run(base, replacement, state) == 0 and load_state(state) == {"failures": 0},
+           "next healthy run retries recovery after restart and resets state")
 
     faucet["health"] = 502
-    run(base, sentry, state)
     received.clear()
     run(base, sentry, state)
-    event = json.loads(received[0][1].split(b"\n")[2])
-    expect(event["message"]["formatted"].startswith("Valar testnet faucet site down (HTTP 502)"), "site-down reason")
+    run(base, sentry, state)
+    expect(len(received) == 2 and all(json.loads(body)["status"] == "error" for _, body in received),
+           "site-down failures also use only the cron lifecycle")
+    # Old deployed versions persisted outage_id/alerted; upgrades discard those only
+    # after a successful recovery, without emitting or reopening old error events.
+    save_state(state, {"failures": 3, "outage_id": "legacy", "alerted": True})
+    faucet["health"] = 200
+    expect(run(base, sentry, state) == 0 and load_state(state) == {"failures": 0},
+           "recovery handles state written by the previous version")
+    faucet["ready"] = (503, "wallet syncing\n")
+    expect(run(base, None, state) == 1, "without DSN, failures still fail the check")
+    faucet["ready"] = (200, "ready\n")
+    expect(run(base, None, state) == 0 and load_state(state) == {"failures": 0},
+           "without DSN, local recovery resets state")
 
     for s in servers:
         s.shutdown()
