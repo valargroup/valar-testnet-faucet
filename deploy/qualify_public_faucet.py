@@ -2,11 +2,13 @@
 """Make one fenced Testnet payout after independent NU7 and website qualification."""
 import argparse
 import decimal
+import hashlib
 import json
 import os
 from pathlib import Path
 import re
 import time
+import tomllib
 import urllib.request
 
 ACTIVATION = 4465026
@@ -53,8 +55,7 @@ def persist(path, value, exclusive=False):
         os.close(descriptor)
 
 
-def gate(config):
-    envelope = fetch(config['selectorUrl'])
+def validate_envelope(envelope):
     require(envelope['selectedProfile'] == 'public-testnet')
     require(envelope['selectionState'] == 'selected')
     require(0 <= time.time() - envelope['generatedAt'] <= 90)
@@ -62,11 +63,44 @@ def gate(config):
     require(status['status'] == 'live' and status['network']['magic'] == 'fa1af9bf')
     require(status['observation']['validatorsAgree'])
     require(status['chain']['height'] >= ACTIVATION + 2)
+    body = {key: value for key, value in envelope.items() if key != 'generation'}
+    require(hashlib.sha256(json.dumps(body, sort_keys=True, allow_nan=False).encode()).hexdigest()
+        == envelope['generation'])
+    manifest = envelope['network']
+    network = manifest['network']
+    require(network['name'] == 'Testnet' and network['magic'] == 'fa1af9bf')
+    require(network['activationHeight'] == ACTIVATION and network['branchId'] == BRANCH)
+    require(all(status['network'].get(key) == network[key]
+        for key in ('name', 'magic', 'activationHeight', 'branchId', 'targetSpacingSeconds', 'daaWindowBlocks')))
+    revision = manifest['nodeRevision']
+    require(re.fullmatch('[0-9a-f]{40}', revision) is not None)
+    require(hashlib.sha256(manifest['config'].encode()).hexdigest() == manifest['configSha256'])
+    joining = tomllib.loads(manifest['config'])
+    require(set(joining) <= {'network', 'rpc', 'state'})
+    require(joining['network']['network'] == 'Testnet')
+    require(set(joining['network']) <= {'network', 'listen_addr', 'initial_testnet_peers', 'p2p_stack'})
+    for key, height in [('atTip', status['chain']['height']), ('nextBlock', status['chain']['height'] + 1)]:
+        rules = envelope['rules'][key]
+        require(rules['effectiveHeight'] == height and rules['network'] == 'Testnet')
+        require(rules['networkMagic'] == 'fa1af9bf' and rules['activationHeight'] == ACTIVATION)
+        require(rules['branchId'] == BRANCH and revision[:12] in rules['buildVersion'])
+        require(rules['targetSpacingSeconds'] == network['targetSpacingSeconds'])
+        require(rules['difficulty']['averagingWindowBlocks'] == network['daaWindowBlocks'])
+    capability = envelope['capabilities']['faucet']
+    require(capability['apiUrl'] == API and capability['claimZat'] == AMOUNT_ZAT)
+
+
+def gate(config):
+    envelope = fetch(config['selectorUrl'])
+    validate_envelope(envelope)
     local = rpc(config['nodeRpc'], 'getblockchaininfo', [])
     require(local['chain'] == 'test' and local['blocks'] >= ACTIVATION + 2)
     parameters = rpc(config['nodeRpc'], 'getnetworkparameters', [local['blocks']])
     require(parameters['networkMagic'] == 'fa1af9bf')
     require(parameters['activationHeight'] == ACTIVATION and parameters['branchId'] == BRANCH)
+    require(envelope['network']['nodeRevision'][:12] in parameters['buildVersion'])
+    require(parameters['difficulty'] == envelope['rules']['atTip']['difficulty'])
+    require(parameters['difficulty'] == envelope['rules']['nextBlock']['difficulty'])
     independent = rpc(config['referenceRpc'], 'getblockchaininfo', [])
     software = rpc(config['referenceRpc'], 'getnetworkinfo', [])
     require(re.match(r'^/Zebra:7\.', software['subversion']))

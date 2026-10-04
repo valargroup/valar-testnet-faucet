@@ -1,4 +1,5 @@
 import json
+import hashlib
 from pathlib import Path
 import tempfile
 import time
@@ -46,10 +47,43 @@ class QualificationTests(unittest.TestCase):
             self.assertFalse(self.receipt.exists())
 
     def envelope(self):
-        return {'selectedProfile': 'public-testnet', 'selectionState': 'selected',
+        network = {'name':'Testnet', 'magic':'fa1af9bf', 'activationHeight':subject.ACTIVATION,
+            'branchId':subject.BRANCH, 'targetSpacingSeconds':25, 'daaWindowBlocks':102}
+        config = '[network]\nnetwork = "Testnet"\n'
+        rules = {'network':'Testnet', 'networkMagic':'fa1af9bf', 'activationHeight':subject.ACTIVATION,
+            'branchId':subject.BRANCH, 'targetSpacingSeconds':25, 'buildVersion':'zakurad +g'+'a'*12,
+            'difficulty': {'averagingWindowBlocks':102}}
+        envelope = {'selectedProfile': 'public-testnet', 'selectionState': 'selected',
             'generatedAt': time.time(), 'generation': 'generation', 'status': {'status': 'live',
-            'network': {'magic': 'fa1af9bf'}, 'observation': {'validatorsAgree': True},
-            'chain': {'height': subject.ACTIVATION + 2}}}
+            'network': network.copy(), 'observation': {'validatorsAgree': True},
+            'chain': {'height': subject.ACTIVATION + 2}}, 'network':{'network':network,
+                'nodeRevision':'a'*40, 'config':config, 'configSha256':hashlib.sha256(config.encode()).hexdigest()},
+            'rules': {'atTip':{**rules, 'effectiveHeight':subject.ACTIVATION+2},
+                'nextBlock':{**rules, 'effectiveHeight':subject.ACTIVATION+3}},
+            'capabilities':{'faucet':{'apiUrl':subject.API, 'claimZat':subject.AMOUNT_ZAT}}}
+        self.digest(envelope)
+        return envelope
+
+    def digest(self, envelope):
+        envelope['generation'] = hashlib.sha256(json.dumps({key:value for key,value in envelope.items()
+            if key != 'generation'},sort_keys=True,allow_nan=False).encode()).hexdigest()
+
+    def test_manifest_config_rules_and_capability_must_be_coherent(self):
+        mutations = [lambda value: value['network']['network'].update(branchId='37a5165b'),
+            lambda value: value['network'].update(config='[network.network]\nnetwork_name="Custom"\n'),
+            lambda value: value['rules']['nextBlock'].update(effectiveHeight=subject.ACTIVATION+2),
+            lambda value: value['capabilities']['faucet'].update(apiUrl='https://example.invalid'),
+            lambda value: value['network'].update(configSha256='0'*64)]
+        for mutation in mutations:
+            value = self.envelope(); mutation(value); self.digest(value)
+            with self.assertRaises(ValueError):
+                subject.validate_envelope(value)
+
+    def test_valid_selected_manifest_passes_and_tampered_generation_fails(self):
+        value = self.envelope(); subject.validate_envelope(value)
+        value['generation'] = '0'*64
+        with self.assertRaises(ValueError):
+            subject.validate_envelope(value)
 
     def test_staging_or_stale_selector_cannot_start_payout(self):
         for profile, age in [('staging', 0), ('public-testnet', 91)]:
@@ -65,7 +99,7 @@ class QualificationTests(unittest.TestCase):
                 if method == 'getblockchaininfo':
                     return {'chain': 'test', 'blocks': subject.ACTIVATION + 2, 'consensus': {'chaintip': branch}}
                 if method == 'getnetworkparameters':
-                    return {'networkMagic': 'fa1af9bf', 'activationHeight': subject.ACTIVATION, 'branchId': subject.BRANCH}
+                    return self.envelope()['rules']['atTip']
                 if method == 'getnetworkinfo':
                     return {'subversion': version}
                 self.fail('Reference rejection should precede payout')
