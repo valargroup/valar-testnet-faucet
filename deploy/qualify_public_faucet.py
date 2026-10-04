@@ -4,6 +4,7 @@ import argparse
 import decimal
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -21,6 +22,14 @@ API = 'https://faucet.testnet.valargroup.dev/api'
 def require(condition):
     if not condition:
         raise ValueError("Qualification gate failed")
+
+
+def positive(value):
+    return type(value) in (int, float) and math.isfinite(value) and value > 0
+
+
+def whole(value):
+    return type(value) is int and 0 <= value <= 9007199254740991
 
 
 def fetch(url, body=None):
@@ -56,10 +65,20 @@ def persist(path, value, exclusive=False):
 
 
 def validate_envelope(envelope):
+    require(type(envelope['schemaVersion']) is int and envelope['schemaVersion'] == 1)
     require(envelope['selectedProfile'] == 'public-testnet')
     require(envelope['selectionState'] == 'selected')
-    require(0 <= time.time() - envelope['generatedAt'] <= 90)
+    require(positive(envelope['generatedAt']) and 0 <= time.time() - envelope['generatedAt'] <= 90)
     status = envelope['status']
+    require(type(status['schemaVersion']) is int and status['schemaVersion'] == 1)
+    require(positive(status['observedAt']) and 0 <= time.time() - status['observedAt'] <= 120)
+    chain = status['chain']
+    require(whole(chain['height']) and chain['height'] > 0)
+    require(isinstance(chain['hash'], str) and re.fullmatch('[0-9a-f]{64}', chain['hash']) is not None)
+    require(positive(chain['blockTime']) and chain['blockTime'] <= status['observedAt'] + 300)
+    require(positive(chain['difficulty']) and whole(chain['intervalSampleBlocks']))
+    median = chain.get('medianIntervalSeconds')
+    require(median is None or (type(median) in (int, float) and math.isfinite(median) and median >= 0))
     require(status['status'] == 'live' and status['network']['magic'] == 'fa1af9bf')
     require(status['observation']['validatorsAgree'])
     require(status['chain']['height'] >= ACTIVATION + 2)
@@ -67,6 +86,7 @@ def validate_envelope(envelope):
     require(hashlib.sha256(json.dumps(body, sort_keys=True, allow_nan=False).encode()).hexdigest()
         == envelope['generation'])
     manifest = envelope['network']
+    require(type(manifest['schemaVersion']) is int and manifest['schemaVersion'] == 1)
     network = manifest['network']
     require(network['name'] == 'Testnet' and network['magic'] == 'fa1af9bf')
     require(network['activationHeight'] == ACTIVATION and network['branchId'] == BRANCH)
@@ -75,16 +95,22 @@ def validate_envelope(envelope):
     revision = manifest['nodeRevision']
     require(re.fullmatch('[0-9a-f]{40}', revision) is not None)
     require(hashlib.sha256(manifest['config'].encode()).hexdigest() == manifest['configSha256'])
+    require(re.search(r'^network\s*=\s*"Testnet"\s*$', manifest['config'], re.MULTILINE) is not None)
+    require(re.search(r'testnet_parameters|activation_heights|Nu7Staging', manifest['config']) is None)
     joining = tomllib.loads(manifest['config'])
     require(set(joining) <= {'network', 'rpc', 'state'})
     require(joining['network']['network'] == 'Testnet')
     require(set(joining['network']) <= {'network', 'listen_addr', 'initial_testnet_peers', 'p2p_stack'})
+    require(set(envelope['rules']['atTip']) == set(envelope['rules']['nextBlock']))
     for key, height in [('atTip', status['chain']['height']), ('nextBlock', status['chain']['height'] + 1)]:
         rules = envelope['rules'][key]
         require(rules['effectiveHeight'] == height and rules['network'] == 'Testnet')
         require(rules['networkMagic'] == 'fa1af9bf' and rules['activationHeight'] == ACTIVATION)
         require(rules['branchId'] == BRANCH and revision[:12] in rules['buildVersion'])
         require(rules['targetSpacingSeconds'] == network['targetSpacingSeconds'])
+        require(whole(rules['targetSpacingSeconds']) and rules['targetSpacingSeconds'] > 0)
+        require(whole(rules['daaWindowBlocks']) and rules['daaWindowBlocks'] > 0)
+        require(rules['daaWindowBlocks'] == network['daaWindowBlocks'])
         require(rules['difficulty']['averagingWindowBlocks'] == network['daaWindowBlocks'])
     capability = envelope['capabilities']['faucet']
     require(capability['apiUrl'] == API and capability['claimZat'] == AMOUNT_ZAT)
