@@ -3,6 +3,25 @@
 
 faucet.testnet.valargroup.dev {
 	encode zstd gzip
+
+	# zakura.com's NU7 dashboard uses this existing public-Testnet wallet.
+	@nu7_api {
+		path /api/status /api/claim /api/claim/*
+		header Origin https://zakura.com
+	}
+	header @nu7_api {
+		Access-Control-Allow-Origin https://zakura.com
+		Access-Control-Allow-Methods "GET, POST, OPTIONS"
+		Access-Control-Allow-Headers Content-Type
+		Access-Control-Expose-Headers Retry-After
+		+Vary Origin
+	}
+	@nu7_preflight {
+		method OPTIONS
+		path /api/status /api/claim /api/claim/*
+		header Origin https://zakura.com
+	}
+	respond @nu7_preflight "" 204
 	reverse_proxy 127.0.0.1:8093 {
 		# The faucet rate-limits on this header and trusts it only from loopback.
 		# header_up replaces any client-supplied value.

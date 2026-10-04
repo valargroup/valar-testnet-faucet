@@ -1,0 +1,10 @@
+[Unit]
+Description=Check public NU7 faucet qualification every two minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=2min
+Unit=valar-faucet-qualification.service
+
+[Install]
+WantedBy=timers.target

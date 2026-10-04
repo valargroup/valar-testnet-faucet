@@ -37,3 +37,5 @@ jobs:
         run: shellcheck deploy/install.sh
       - name: healthcheck self-test
         run: python3 deploy/healthcheck.py --self-test
+      - name: NU7 qualification guards
+        run: python3 -m unittest discover -s deploy -p 'test_qualify_public_faucet.py'

@@ -128,6 +128,29 @@ The faucet runs on **zakura-testnet-1** (167.99.103.111, DO project `zakura-test
 
 If a fleet deploy ever installs a Caddyfile without that line, the faucet drops off the public hostname. `install.sh` warns when this happens, and the deploy's public health check fails.
 
+### NU7 readiness
+
+The pinned zecd 0.9.0-rc1 release uses Zakura Common 2.2.0 and schedules public
+Testnet NU7 at height 4,465,026 with branch ID `77190ad9`. The older 0.8.1
+release does not schedule this activation. The faucet API also allows the
+`https://zakura.com` dashboard origin on its three API routes; other origins do
+not receive CORS permission. Payout limits and wallet ownership checks apply
+unchanged.
+
+Before upgrading a funded wallet, save a consistent SQLite backup and its
+matching encrypted wallet files on the same host, preserve the old runtime and
+configuration, and rehearse the new binary against an isolated copy. Check
+there are no outstanding sends before the copy. Bind the rehearsal RPC to
+loopback on a separate port, allow only read methods, and do not run faucet
+workers against it. Verify the copied balance and sync state before restarting
+the existing service. Rollback after a schema migration restores the matching
+pre-upgrade database copy; do not run the old binary against a migrated database.
+
+After upgrading, verify the service version, wallet balance and advancing scan
+height, API readiness, an actual claim, and cross-origin preflight from
+`https://zakura.com`. A real post-activation v6 payout must be checked after
+activation; pre-activation claims cannot establish that result.
+
 ### Wallet
 
 The faucet wallet is the **testnet miner's seed** (BIP-39, BIP-44 account 0).
@@ -212,3 +235,30 @@ systemctl restart valar-faucet
 ```
 
 **Upgrading zecd:** bump both `ZECD_VERSION` and `ZECD_SHA256` in `deploy/zecd.version`; the next deploy installs it and restarts zecd.
+
+### One public NU7 payout qualification
+
+`deploy/install-qualification.sh` requires Python 3.11+ (for joining-config parsing),
+installs a separate unprivileged timer, and preserves
+an existing `/etc/valar-faucet/qualification.json`. The example config has
+`enabled: false`. Enabling this payout check does not arm the network selector:
+every new attempt requires the fresh dashboard to have selected public Testnet,
+three validators to agree, and both the local node and independent Zebra 7
+reference to have reached activation plus two blocks on branch `77190ad9` with a
+common checkpoint. Until then the check sends no payout. The reference endpoint
+must remain restricted to the existing observer host.
+
+The authorized controlled recipient is the existing test address
+`tmDCiNGTbRz1Y1eYWyrPBFCaH61JSffwzSr`; the check requests exactly 0.125 TAZ.
+The persistent receipt is written and synced before POST. If the request is
+ambiguous, no automatic second POST is possible: reconcile the API's request and
+claim history manually before changing the receipt. An existing claim ID resumes
+only polling. Acceptance requires v6 with NU7 branch, the exact recipient/amount,
+two confirmations, and the mined block hash on the independent reference.
+An accepted receipt makes subsequent timer runs a cheap local no-op.
+
+The timer checks every two minutes, has a bounded 90-second service invocation,
+and holds no wallet or SSH credentials. Check it with
+`systemctl status valar-faucet-qualification.timer` and
+`journalctl -u valar-faucet-qualification.service -n 20`.
+The real post-activation payout remains pending until these gates pass.

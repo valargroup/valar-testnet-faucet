@@ -1,5 +1,5 @@
 # Pinned zecd release (https://github.com/zecrocks/zecd/releases). ZECD_SHA256 is the
 # linux-amd64 tarball's hash from that release's SHA256SUMS; install.sh refuses any
 # download that does not match it. Bump both together.
-ZECD_VERSION=0.8.1
-ZECD_SHA256=a03de39d731db3aded550f8421bc0d96853eebcce7cb4712c0797f309bf05f2e
+ZECD_VERSION=0.9.0-rc1
+ZECD_SHA256=880383f9927c10ffe3bf0aa1cf19f384121a82d34db6f846b4c740c7766f4f88
