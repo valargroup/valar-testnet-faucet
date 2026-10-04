@@ -52,11 +52,13 @@ class QualificationTests(unittest.TestCase):
         config = '[network]\nnetwork = "Testnet"\n'
         rules = {'network':'Testnet', 'networkMagic':'fa1af9bf', 'activationHeight':subject.ACTIVATION,
             'branchId':subject.BRANCH, 'targetSpacingSeconds':25, 'buildVersion':'zakurad +g'+'a'*12,
-            'difficulty': {'averagingWindowBlocks':102}}
-        envelope = {'selectedProfile': 'public-testnet', 'selectionState': 'selected',
-            'generatedAt': time.time(), 'generation': 'generation', 'status': {'status': 'live',
+            'difficulty': {'averagingWindowBlocks':102}, 'daaWindowBlocks':102}
+        envelope = {'schemaVersion':1, 'selectedProfile': 'public-testnet', 'selectionState': 'selected',
+            'generatedAt': time.time(), 'generation': 'generation', 'status': {'schemaVersion':1,
+            'observedAt':time.time(), 'status': 'live',
             'network': network.copy(), 'observation': {'validatorsAgree': True},
-            'chain': {'height': subject.ACTIVATION + 2}}, 'network':{'network':network,
+            'chain': {'height': subject.ACTIVATION + 2, 'hash':'b'*64, 'blockTime':time.time(),
+                'difficulty':1, 'intervalSampleBlocks':0}}, 'network':{'schemaVersion':1, 'network':network,
                 'nodeRevision':'a'*40, 'config':config, 'configSha256':hashlib.sha256(config.encode()).hexdigest()},
             'rules': {'atTip':{**rules, 'effectiveHeight':subject.ACTIVATION+2},
                 'nextBlock':{**rules, 'effectiveHeight':subject.ACTIVATION+3}},
@@ -75,6 +77,22 @@ class QualificationTests(unittest.TestCase):
             lambda value: value['capabilities']['faucet'].update(apiUrl='https://example.invalid'),
             lambda value: value['capabilities'].update(snapshot={'networkId':'staging'}),
             lambda value: value['network'].update(configSha256='0'*64)]
+        for mutation in mutations:
+            value = self.envelope(); mutation(value); self.digest(value)
+            with self.assertRaises(ValueError):
+                subject.validate_envelope(value)
+
+    def test_browser_required_observation_and_rule_shape_rejects_malformed_generation(self):
+        mutations = [lambda value: value.update(schemaVersion=2),
+            lambda value: value['network'].update(schemaVersion=2),
+            lambda value: value['status'].update(schemaVersion=2),
+            lambda value: value['status'].update(observedAt=time.time()-121),
+            lambda value: value['status']['chain'].update(hash='bad'),
+            lambda value: value['status']['chain'].update(blockTime=0),
+            lambda value: value['status']['chain'].update(difficulty=0),
+            lambda value: value['status']['chain'].update(intervalSampleBlocks=-1),
+            lambda value: value['rules']['atTip'].update(daaWindowBlocks=17),
+            lambda value: value['rules']['nextBlock'].update(inventedRule=1)]
         for mutation in mutations:
             value = self.envelope(); mutation(value); self.digest(value)
             with self.assertRaises(ValueError):
