@@ -128,6 +128,8 @@ The faucet runs on **zakura-testnet-1** (167.99.103.111, DO project `zakura-test
 
 If a fleet deploy ever installs a Caddyfile without that line, the faucet drops off the public hostname. `install.sh` warns when this happens, and the deploy's public health check fails.
 
+**Caddy version floor.** Nothing in this repo installs Caddy, so its version is whatever the host was provisioned with. Caddy's 2026 advisory cluster (`CVE-2026-77281` handler/placeholder re-expansion, `CVE-2026-92284` unbounded body DoS, `CVE-2026-92700` admin auth bypass, `CVE-2026-52845` FastCGI header bypass) is fixed only in 2.11.4. `deploy/install.sh` therefore runs `deploy/verify-caddy-version.sh` before it replaces the snippet and reloads, and fails the deploy when the host's `caddy version` is below the floor (`CADDY_MIN_VERSION`, default `2.11.4`). `caddy validate` alone does not catch this: an old Caddy validates the snippet happily and keeps serving it.
+
 ### NU7 readiness
 
 The pinned zecd 0.9.0-rc1 release uses Zakura Common 2.2.0 and schedules public

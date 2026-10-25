@@ -26,6 +26,15 @@ CADDY_SNIPPET=/etc/caddy/conf.d/valar-faucet.caddy
 HEALTH_URL=http://127.0.0.1:8093/healthz
 WALLET_KEYS=$DATA/zecd/default/keys.toml
 KEEP_RELEASES=5
+# Caddy on this host is installed and upgraded by whoever provisions the host
+# (zakura-core/zakura owns /etc/caddy/Caddyfile, which imports this repo's
+# snippet); nothing in this repo pins it. Caddy's 2026 advisory cluster
+# (CVE-2026-77281 handler/placeholder re-expansion, CVE-2026-92284 unbounded
+# body DoS, CVE-2026-92700 admin auth bypass, CVE-2026-52845 FastCGI header
+# bypass) is fixed only in 2.11.4, so the running version is asserted before
+# the live snippet is replaced and Caddy is reloaded.
+CADDY_MIN_VERSION=${CADDY_MIN_VERSION:-2.11.4}
+DEPLOY_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 log() { printf '[install] %s\n' "$*"; }
 warn() { printf '[install] WARNING: %s\n' "$*" >&2; }
@@ -134,6 +143,10 @@ if ! grep -Eq '^[[:space:]]*import[[:space:]]+/etc/caddy/conf\.d/\*\.caddy' "$CA
 	warn "$CADDYFILE does not import /etc/caddy/conf.d/*.caddy; the faucet is not publicly routed."
 	warn "Add the import to zakura-core/zakura deploy/gateway/testnet/Caddyfile (see README)."
 fi
+# Fail before touching the live snippet when the host Caddy predates the 2.11.4
+# security floor. `caddy validate` below accepts either version, so without
+# this assertion an old Caddy keeps serving the public faucet unseen.
+REQUIRED_CADDY_VERSION=$CADDY_MIN_VERSION "$DEPLOY_DIR/verify-caddy-version.sh"
 snippet_backup=
 if [[ -f $CADDY_SNIPPET ]]; then
 	snippet_backup=$(mktemp)
